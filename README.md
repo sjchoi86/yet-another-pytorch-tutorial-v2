@@ -1,4 +1,4 @@
-# yet-another-pytorch-tutorial-v2
+## Yet Another Pytorch Tutorial v2
 
 Minimal implementations of
 - [MLP](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/mlp.ipynb): MNIST classification using multi-layer perception (MLP)
