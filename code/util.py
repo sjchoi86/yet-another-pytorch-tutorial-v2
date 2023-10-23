@@ -3,8 +3,32 @@ import matplotlib.pyplot as plt
 import torch as th
 
 
+
 def get_torch_size_string(x):
     return "x".join(map(str,x.shape))
+
+def plot_4x4_torch_tensor(
+    x_torch,
+    figsize  = (4,4),
+    cmap     = 'gray',
+    info_str = '',
+    top      = 0.92,
+    hspace   = 0.1
+):
+    """
+    :param x_torch: [B x C x W x H]
+    """
+    batch_size = x_torch.shape[0]
+    fig = plt.figure(figsize=figsize)
+    for i in range(batch_size):
+        ax = plt.subplot(4,4,i+1)
+        plt.imshow(x_torch.permute(0,2,3,1).detach().numpy()[i,:,:,:], cmap=cmap)
+        plt.axis('off')
+    plt.subplots_adjust(
+        left=0.0,right=1.0,bottom=0.0,top=top,wspace=0.0,hspace=hspace)
+    plt.suptitle('%s[%d] Images of [%dx%d] sizes'%
+                 (info_str,batch_size,x_torch.shape[2],x_torch.shape[3]),fontsize=10)
+    plt.show()
 
 def print_model_parameters(model):
     """ 
