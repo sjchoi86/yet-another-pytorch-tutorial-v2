@@ -2,6 +2,32 @@ import math
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+from abc import abstractmethod
+
+class TimestepBlock(nn.Module):
+    """
+    Any module where forward() takes timestep embeddings as a second argument.
+    """
+
+    @abstractmethod
+    def forward(self, x, emb):
+        """
+        Apply the module to `x` given `emb` timestep embeddings.
+        """
+        
+class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+    """
+    A sequential module that passes timestep embeddings to the children that
+    support it as an extra input.
+    """
+
+    def forward(self, x, emb):
+        for layer in self:
+            if isinstance(layer, TimestepBlock):
+                x = layer(x, emb)
+            else:
+                x = layer(x)
+        return x
 
 def zero_module(module):
     """
@@ -197,6 +223,7 @@ class AttentionBlock(nn.Module):
             self,
             n_channels         = 1,
             n_heads            = 1,
+            n_groups           = 32,
     ):
         super().__init__()
         self.n_channels         = n_channels
@@ -206,7 +233,7 @@ class AttentionBlock(nn.Module):
         ), f"n_channels:[%d] should be divisible by n_heads:[%d]."%(n_channels,n_heads)
             
         # Normalize 
-        self.norm = normalization(n_channels=n_channels,n_groups=32)
+        self.norm = normalization(n_channels=n_channels,n_groups=n_groups)
         
         # Tripple the channel
         self.qkv = nn.Conv1d(
@@ -255,7 +282,7 @@ class AttentionBlock(nn.Module):
         intermediate_output_dict['out']    = out
         return out,intermediate_output_dict
 
-class ResBlock(nn.Module):
+class ResBlock(TimestepBlock):
     """ 
     A residual block that can optionally change the number of channels and resolution
     
@@ -432,5 +459,5 @@ class ResBlock(nn.Module):
             
         # Skip connection
         out = h + self.skip_connection(x) # [B x C x ...]
-        # Out
         return out # [B x C x ...]
+    

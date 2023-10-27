@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import torch as th
-
+from scipy.spatial import distance
 
 
 def get_torch_size_string(x):
@@ -29,6 +29,52 @@ def plot_4x4_torch_tensor(
     plt.suptitle('%s[%d] Images of [%dx%d] sizes'%
                  (info_str,batch_size,x_torch.shape[2],x_torch.shape[3]),fontsize=10)
     plt.show()
+    
+def plot_1xN_torch_img_tensor(
+    x_torch,
+    title_str_list = None,
+    title_fontsize = 20):
+    """ 
+    : param x_torch: [B x C x W x H]
+    """
+    xt_np = x_torch.cpu().numpy() # [B x C x W x H]
+    n_imgs = xt_np.shape[0]
+    plt.figure(figsize=(n_imgs*2,3))
+    for img_idx in range(n_imgs):
+        plt.subplot(1,n_imgs,img_idx+1)
+        if xt_np.shape[1]==1:
+            plt.imshow(xt_np[img_idx,0,:,:], cmap='gray')
+        else:
+            plt.imshow(xt_np[img_idx,:,:,:].transpose(1,2,0))
+        if title_str_list:
+            plt.title(title_str_list[img_idx],fontsize=title_fontsize)
+        plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+    
+def plot_1xN_torch_traj_tensor(
+    times,
+    x_torch,
+    title_str_list = None,
+    title_fontsize = 20,
+    ylim           = None,
+    ):
+    """ 
+    : param x_torch: [B x C x ...]
+    """
+    xt_np = x_torch.cpu().numpy() # [B x C x W x H]
+    n_trajs = xt_np.shape[0]
+    L = times.shape[0]
+    plt.figure(figsize=(n_trajs*2,3))
+    for traj_idx in range(n_trajs):
+        plt.subplot(1,n_trajs,traj_idx+1)
+        plt.plot(times,x_torch[traj_idx,0,:].cpu().numpy())
+        if title_str_list:
+            plt.title(title_str_list[traj_idx],fontsize=title_fontsize)
+        if ylim:
+            plt.ylim(ylim)
+    plt.tight_layout()
+    plt.show()    
 
 def print_model_parameters(model):
     """ 
@@ -136,4 +182,43 @@ def model_test(model,test_data,test_label,device):
         fontcolor = 'k' if (y_pred[idx] == test_label_samples[idx]) else 'r'
         plt.title("Pred:%d, Label:%d"%(y_pred[idx],test_label_samples[idx]),
                 fontsize=8,color=fontcolor)
-    plt.show()    
+    plt.show()
+    
+def kernel_se(x1,x2,hyp={'gain':1.0,'len':1.0}):
+    """ Squared-exponential kernel function """
+    D = distance.cdist(x1/hyp['len'],x2/hyp['len'],'sqeuclidean')
+    K = hyp['gain']*np.exp(-D)
+    return K
+
+def gp_sampler(
+    times    = np.linspace(start=0.0,stop=1.0,num=100).reshape((-1,1)), # [L x 1]
+    hyp_gain = 1.0,
+    hyp_len  = 1.0,
+    meas_std = 1e-8,
+    n_traj   = 1):
+    """ 
+        Gaussian process sampling
+    """
+    L = times.shape[0]
+    K = kernel_se(times,times,hyp={'gain':hyp_gain,'len':hyp_len}) # [L x L]
+    K_chol = np.linalg.cholesky(K+1e-8*np.eye(L,L)) # [L x L]
+    traj = K_chol @ np.random.randn(L,n_traj) # [L x n_traj]
+    traj = traj + meas_std*np.random.randn(*traj.shape)
+    return traj
+
+def hbm_sampler(
+    times    = np.linspace(start=0.0,stop=1.0,num=100).reshape((-1,1)), # [L x 1]
+    hyp_gain = 1.0,
+    hyp_len  = 1.0,
+    meas_std = 1e-8,
+    n_traj   = 1):
+    """
+        Hilbert Brownian motion sampling
+    """
+    L = times.shape[0]
+    K = kernel_se(times,times,hyp={'gain':hyp_gain,'len':hyp_len}) # [L x L]
+    K = K + 1e-8*np.eye(L,L)
+    U,V = np.linalg.eigh(K,UPLO='L')
+    traj = V @ np.diag(np.sqrt(U)) @ np.random.randn(L,n_traj) # [L x n_traj]
+    traj = traj + meas_std*np.random.randn(*traj.shape)
+    return traj
