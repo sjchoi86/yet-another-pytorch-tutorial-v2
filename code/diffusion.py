@@ -78,6 +78,8 @@ def get_ddpm_constants(
     sqrt_alphas_bar           = np.sqrt(alphas_bar)
     sqrt_one_minus_alphas_bar = np.sqrt(1.0-alphas_bar)
     posterior_variance        = betas*(1.0-alphas_bar_prev)/(1.0-alphas_bar)
+    posterior_variance        = posterior_variance.astype(np_type)
+    
     # Append
     dc = {}
     dc['schedule_name']             = schedule_name
@@ -91,6 +93,7 @@ def get_ddpm_constants(
     dc['sqrt_alphas_bar']           = sqrt_alphas_bar
     dc['sqrt_one_minus_alphas_bar'] = sqrt_one_minus_alphas_bar
     dc['posterior_variance']        = posterior_variance
+    
     return dc
 
 def plot_ddpm_constants(dc):
@@ -193,6 +196,7 @@ class DiffusionUNet(nn.Module):
         n_dec_blocks     = 2, # number of decoder blocks
         n_groups         = 16, # group norm paramter
         n_heads          = 4, # number of heads
+        actv             = nn.SiLU(),
         device           = 'cpu',
     ):
         super().__init__()
@@ -205,6 +209,7 @@ class DiffusionUNet(nn.Module):
         self.n_dec_blocks     = n_dec_blocks
         self.n_groups         = n_groups
         self.n_heads          = n_heads
+        self.actv             = actv
         self.device           = device
         
         # Time embedding
@@ -220,13 +225,13 @@ class DiffusionUNet(nn.Module):
             in_channels  = self.n_in_channels,
             out_channels = self.n_model_channels,
             kernel_size  = 1,
-        )
+        ).to(device)
         self.proj = conv_nd(
             dims         = self.dims,
             in_channels  = self.n_model_channels,
             out_channels = self.n_in_channels,
             kernel_size  = 1,
-        )
+        ).to(device)
         
         # Declare U-net 
         # Encoder
@@ -235,22 +240,25 @@ class DiffusionUNet(nn.Module):
             # Residual block
             self.enc_layers.append(
                 ResBlock(
+                    name           = 'res',
                     n_channels     = self.n_model_channels,
                     n_emb_channels = self.n_emb_dim,
                     n_out_channels = self.n_model_channels,
                     n_groups       = self.n_groups,
                     dims           = self.dims,
+                    actv           = self.actv,
                     upsample       = False,
                     downsample     = False,
-                )   
+                ).to(device)
             )
             # Attention block
             self.enc_layers.append(
                 AttentionBlock(
+                    name           = 'att',
                     n_channels     = self.n_model_channels,
                     n_heads        = self.n_heads,
                     n_groups       = self.n_groups,
-                )
+                ).to(device)
             )
             
         # Decoder
@@ -260,26 +268,30 @@ class DiffusionUNet(nn.Module):
             if d_idx == 0: 
                 self.dec_layers.append(
                     ResBlock(
-                        n_channels     = self.n_model_channels*2,
+                        name           = 'res',
+                        n_channels     = self.n_model_channels*self.n_enc_blocks,
                         n_emb_channels = self.n_emb_dim,
                         n_out_channels = self.n_model_channels,
                         n_groups       = self.n_groups,
                         dims           = self.dims,
+                        actv           = self.actv,
                         upsample       = False,
                         downsample     = False,
-                    )   
+                    ).to(device)
                 )
             else:
                 self.dec_layers.append(
                     ResBlock(
+                        name           = 'att',
                         n_channels     = self.n_model_channels,
                         n_emb_channels = self.n_emb_dim,
                         n_out_channels = self.n_model_channels,
                         n_groups       = self.n_groups,
                         dims           = self.dims,
+                        actv           = self.actv,
                         upsample       = False,
                         downsample     = False,
-                    )   
+                    ).to(device)
                 )
             # Attention block
             self.dec_layers.append(
@@ -287,7 +299,7 @@ class DiffusionUNet(nn.Module):
                     n_channels     = self.n_model_channels,
                     n_heads        = self.n_heads,
                     n_groups       = self.n_groups,
-                )
+                ).to(device)
             )
             
         # Define U-net
@@ -328,7 +340,9 @@ class DiffusionUNet(nn.Module):
             h = module(h,emb)
             if isinstance(h,tuple): h = h[0] # in case of having tuple
             # Append
-            intermediate_output_dict['enc_%02d'%(m_idx)] = h
+            if (m_idx%2) == 1: module_name = 'res'
+            else: module_name = 'att'
+            intermediate_output_dict['h_enc_%s_%02d'%(module_name,m_idx)] = h
             # Append encoder output
             if (m_idx%2) == 1:
                 self.h_enc_list.append(h)
@@ -337,12 +351,15 @@ class DiffusionUNet(nn.Module):
         for h_idx,h_enc in enumerate(self.h_enc_list):
             if h_idx == 0: h_enc_stack = h_enc
             else: h_enc_stack = th.cat([h_enc_stack,h_enc],dim=1)
+        intermediate_output_dict['h_enc_stack'] = h_enc_stack
         h = h_enc_stack
         for m_idx,module in enumerate(self.dec_net):
             h = module(h,emb)
             if isinstance(h,tuple): h = h[0] # in case of having tuple
             # Append
-            intermediate_output_dict['dic_%02d'%(m_idx)] = h
+            if (m_idx%2) == 1: module_name = 'res'
+            else: module_name = 'att'
+            intermediate_output_dict['h_dec_%s_%02d'%(module_name,m_idx)] = h
                 
         # Projection
         out = self.proj(h)

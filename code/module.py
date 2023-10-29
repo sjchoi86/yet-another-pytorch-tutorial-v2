@@ -221,11 +221,13 @@ class AttentionBlock(nn.Module):
     """
     def __init__(
             self,
+            name               = 'attentionblock',
             n_channels         = 1,
             n_heads            = 1,
             n_groups           = 32,
     ):
         super().__init__()
+        self.name               = name
         self.n_channels         = n_channels
         self.n_heads            = n_heads
         assert (
@@ -302,8 +304,9 @@ class ResBlock(TimestepBlock):
     """
     def __init__(
         self,
-        n_channels,
-        n_emb_channels,
+        name                 = 'resblock',
+        n_channels           = 128,
+        n_emb_channels       = 128,
         n_out_channels       = None,
         n_groups             = 16,
         dims                 = 2,
@@ -320,6 +323,7 @@ class ResBlock(TimestepBlock):
         padding              = 1,
     ):
         super().__init__()
+        self.name                 = name
         self.n_channels           = n_channels
         self.n_emb_channels       = n_emb_channels
         self.n_groups             = n_groups

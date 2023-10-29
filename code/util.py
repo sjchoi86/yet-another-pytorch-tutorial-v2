@@ -194,31 +194,38 @@ def gp_sampler(
     times    = np.linspace(start=0.0,stop=1.0,num=100).reshape((-1,1)), # [L x 1]
     hyp_gain = 1.0,
     hyp_len  = 1.0,
-    meas_std = 1e-8,
-    n_traj   = 1):
+    meas_std = 0e-8,
+    n_traj   = 1
+    ):
     """ 
         Gaussian process sampling
     """
+    if len(times.shape) == 1: times = times.reshape((-1,1))
     L = times.shape[0]
     K = kernel_se(times,times,hyp={'gain':hyp_gain,'len':hyp_len}) # [L x L]
     K_chol = np.linalg.cholesky(K+1e-8*np.eye(L,L)) # [L x L]
     traj = K_chol @ np.random.randn(L,n_traj) # [L x n_traj]
     traj = traj + meas_std*np.random.randn(*traj.shape)
-    return traj
+    return traj.T
 
 def hbm_sampler(
     times    = np.linspace(start=0.0,stop=1.0,num=100).reshape((-1,1)), # [L x 1]
     hyp_gain = 1.0,
     hyp_len  = 1.0,
-    meas_std = 1e-8,
-    n_traj   = 1):
+    meas_std = 0e-8,
+    n_traj   = 1
+    ):
     """
         Hilbert Brownian motion sampling
     """
+    if len(times.shape) == 1: times = times.reshape((-1,1))
     L = times.shape[0]
     K = kernel_se(times,times,hyp={'gain':hyp_gain,'len':hyp_len}) # [L x L]
     K = K + 1e-8*np.eye(L,L)
     U,V = np.linalg.eigh(K,UPLO='L')
     traj = V @ np.diag(np.sqrt(U)) @ np.random.randn(L,n_traj) # [L x n_traj]
     traj = traj + meas_std*np.random.randn(*traj.shape)
-    return traj
+    return traj.T
+
+def get_colors(n):
+    return [plt.cm.Set1(x) for x in np.linspace(0,1,n)]
