@@ -168,12 +168,12 @@ def forward_sample(x0_batch,t_batch,dc):
     sqrt_alphas_bar_t = th.gather(
         input = th.from_numpy(dc['sqrt_alphas_bar']).to(device), # [T]
         dim   = -1,
-        index = t_batch-1
+        index = t_batch
     ).reshape(out_shape) # [B x 1 x 1 x 1] if (rank==4) and [B x 1 x 1] if (rank==3)
     sqrt_one_minus_alphas_bar = th.gather(
         input = th.from_numpy(dc['sqrt_one_minus_alphas_bar']).to(device), # [T]
         dim   = -1,
-        index = t_batch-1
+        index = t_batch
     ).reshape(out_shape) # [B x 1 x 1 x 1]
     # Forward sample
     noise = th.randn_like(input=x0_batch) # [B x C x ...]
