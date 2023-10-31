@@ -311,6 +311,7 @@ class ResBlock(TimestepBlock):
         n_groups             = 16,
         dims                 = 2,
         p_dropout            = 0.5,
+        kernel_size          = 3,
         actv                 = nn.SiLU(),
         use_conv             = False,
         use_scale_shift_norm = True,
@@ -329,6 +330,7 @@ class ResBlock(TimestepBlock):
         self.n_groups             = n_groups
         self.dims                 = dims
         self.n_out_channels       = n_out_channels or self.n_channels
+        self.kernel_size          = kernel_size
         self.p_dropout            = p_dropout
         self.actv                 = actv
         self.use_conv             = use_conv
@@ -349,7 +351,7 @@ class ResBlock(TimestepBlock):
                 dims         = self.dims,
                 in_channels  = self.n_channels,
                 out_channels = self.n_out_channels,
-                kernel_size  = 3,
+                kernel_size  = self.kernel_size,
                 padding      = self.padding,
                 padding_mode = self.padding_mode
             )
@@ -401,7 +403,7 @@ class ResBlock(TimestepBlock):
                     dims         = self.dims, 
                     in_channels  = self.n_out_channels,
                     out_channels = self.n_out_channels,
-                    kernel_size  = 3,
+                    kernel_size  = self.kernel_size,
                     padding      = self.padding,
                     padding_mode = self.padding_mode
                 )
@@ -414,7 +416,7 @@ class ResBlock(TimestepBlock):
                 dims         = self.dims,
                 in_channels  = self.n_channels,
                 out_channels = self.n_out_channels,
-                kernel_size  = 3,
+                kernel_size  = self.kernel_size,
                 padding      = self.padding,
                 padding_mode = self.padding_mode
             )
