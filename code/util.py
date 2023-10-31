@@ -229,3 +229,12 @@ def hbm_sampler(
 
 def get_colors(n):
     return [plt.cm.Set1(x) for x in np.linspace(0,1,n)]
+
+def periodic_step(times,period,time_offset=0.0,y_min=0.0,y_max=1.0):
+    times_mod = np.mod(times+time_offset,period)
+    y = np.zeros_like(times)
+    y[times_mod < (period/2)] = 1
+    y*=(y_max-y_min)
+    y+=y_min
+    return y
+

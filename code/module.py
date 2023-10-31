@@ -301,6 +301,8 @@ class ResBlock(TimestepBlock):
     :param upsample: if True, upsample
     :param downsample: if True, downsample
     :param sample_mode: upsample, downsample mode ('nearest' or 'bilinear')
+    :param padding_mode: str
+    :param padding: int
     """
     def __init__(
         self,

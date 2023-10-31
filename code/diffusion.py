@@ -574,3 +574,78 @@ class MixedPrecisionTrainer:
     def state_dict_to_master_params(self, state_dict):
         return state_dict_to_master_params(self.model, state_dict, self.use_fp16)
 
+def eval_ddpm_1d(model,dc,n_sample,times,x_0,device,ylim=None):
+    """
+        Evaluate DDPM in 1D case
+    :param model: score function
+    :param dc: dictionary of diffusion coefficients
+    :param n_sample: integer of how many trajectories to sample
+    :param x_0: [N x C x L] tensor
+    """
+    model.eval()
+    n_data,C,L = x_0.shape
+    x_dummy    = th.zeros(n_sample,C,L,device=device)
+    step_dummy = th.zeros(n_sample).type(th.long).to(device)
+    _,x_T      = forward_sample(x_dummy,step_dummy,dc) # [n_sample x C x L]
+    x_t        = x_T.clone() # [n_sample x C x L]
+    x_t_list   = ['']*dc['T']
+    for t in range(0,dc['T'])[::-1]: # 999 to 0
+        # Score function
+        step = th.full(
+            size       = (n_sample,),
+            fill_value = t,
+            device     = device,
+            dtype      = th.long) # [n_sample]
+        eps_t,_ = model(x_t,step) # [n_sample x C x L]
+        betas_t = th.gather(
+            input = th.from_numpy(dc['betas']).to(device), # [T]
+            dim   = -1,
+            index = step
+        ).reshape((-1,1,1)) # [n_sample x 1 x 1]
+        sqrt_one_minus_alphas_bar_t = th.gather(
+            input = th.from_numpy(dc['sqrt_one_minus_alphas_bar']).to(device), # [T]
+            dim   = -1,
+            index = step
+        ).reshape((-1,1,1)) # [n_sample x 1 x 1]
+        sqrt_recip_alphas_t = th.gather(
+            input = th.from_numpy(dc['sqrt_recip_alphas']).to(device), # [T]
+            dim   = -1,
+            index = step
+        ).reshape((-1,1,1)) # [n_sample x 1 x 1]
+        # Compute posterior mean
+        mean_t = sqrt_recip_alphas_t * (
+            x_t - betas_t*eps_t/sqrt_one_minus_alphas_bar_t
+            ) # [n_sample x C x L]
+        # Compute posterior variance
+        posterior_variance_t = th.gather(
+            input = th.from_numpy(dc['posterior_variance']).to(device), # [T]
+            dim   = -1,
+            index = step
+        ).reshape((-1,1,1)) # [n_sample x 1 x 1]
+        # Sample
+        if t == 0: # last sampling, use mean
+            x_t = mean_t
+        else:
+            _,noise_t = forward_sample(x_dummy,step_dummy,dc) # [n_sample x C x 1]
+            x_t = mean_t + th.sqrt(posterior_variance_t)*noise_t
+        # Append
+        x_t_list[t] = x_t
+    model.train()
+    
+    # Plot
+    for t in np.linspace(dc['T']-1,0,3).astype(np.int32):
+        x_t = x_t_list[t] # [n_sample x C x L]
+        x_t_np = x_t.detach().cpu().numpy() # [n_sample x C x L]
+        x_0_np = x_0.detach().cpu().numpy() # [n_data x C x L]
+        plt.figure(figsize=(6,2))
+        for i_idx in range(n_data): # GT
+            plt.plot(times.flatten(),x_0_np[i_idx,0,:],ls='-',color='b',lw=1)
+        for i_idx in range(n_sample): # sampled
+            plt.plot(times.flatten(),x_t_np[i_idx,0,:],ls='-',color='k',lw=1/2)
+        plt.xlim([0.0,1.0])
+        if ylim:
+            plt.ylim(ylim)
+        plt.xlabel('Time',fontsize=8)
+        plt.title('Step:[%d]'%(t),fontsize=8)
+        plt.show()
+        
