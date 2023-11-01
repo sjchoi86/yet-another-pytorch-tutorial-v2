@@ -10,7 +10,7 @@ Minimal implementations of
 - [Attention](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/attention.ipynb): Attention block with legacy QKV attention mechanism
 - [ResBlock](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_resblock.ipynb): Residual block for diffusion models
 - [Diffusion](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_constants.ipynb): Diffusion constants
-- [DDPM 1D Example](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_1d_example.ipynb): DDPM example on 1D
+- [DDPM 1D Example](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_1d_example.ipynb): Denoising Diffusion Probabilistic Model (DDPM) example on 1D
 
 Contact
 - sungjoon dash choi at korea dot ac dot kr
