@@ -200,6 +200,8 @@ class DiffusionUNet(nn.Module):
         actv             = nn.SiLU(),
         kernel_size      = 3, # kernel size
         padding          = 1,
+        use_resblock     = True,
+        use_attention    = True,
         skip_connection  = False,
         device           = 'cpu',
     ):
@@ -216,6 +218,8 @@ class DiffusionUNet(nn.Module):
         self.actv             = actv
         self.kernel_size      = kernel_size
         self.padding          = padding
+        self.use_resblock     = use_resblock
+        self.use_attention    = use_attention
         self.skip_connection  = skip_connection
         self.device           = device
         
@@ -246,54 +250,9 @@ class DiffusionUNet(nn.Module):
         # Encoder
         self.enc_layers = []
         for e_idx in range(self.n_enc_blocks):
-            # Residual block
-            self.enc_layers.append(
-                ResBlock(
-                    name           = 'res',
-                    n_channels     = self.n_model_channels,
-                    n_emb_channels = self.n_emb_dim,
-                    n_out_channels = self.n_model_channels,
-                    n_groups       = self.n_groups,
-                    dims           = self.dims,
-                    actv           = self.actv,
-                    kernel_size    = self.kernel_size,
-                    padding        = self.padding,
-                    upsample       = False,
-                    downsample     = False,
-                ).to(device)
-            )
-            # Attention block
-            self.enc_layers.append(
-                AttentionBlock(
-                    name           = 'att',
-                    n_channels     = self.n_model_channels,
-                    n_heads        = self.n_heads,
-                    n_groups       = self.n_groups,
-                ).to(device)
-            )
-            
-        # Decoder
-        self.dec_layers = []
-        for d_idx in range(self.n_dec_blocks):
-            # Residual block
-            if d_idx == 0: 
-                self.dec_layers.append(
-                    ResBlock(
-                        name           = 'res',
-                        n_channels     = self.n_model_channels*self.n_enc_blocks,
-                        n_emb_channels = self.n_emb_dim,
-                        n_out_channels = self.n_model_channels,
-                        n_groups       = self.n_groups,
-                        dims           = self.dims,
-                        actv           = self.actv,
-                        kernel_size    = self.kernel_size,
-                        padding        = self.padding,
-                        upsample       = False,
-                        downsample     = False,
-                    ).to(device)
-                )
-            else:
-                self.dec_layers.append(
+            # Residual block in encoder
+            if self.use_resblock:
+                self.enc_layers.append(
                     ResBlock(
                         name           = 'res',
                         n_channels     = self.n_model_channels,
@@ -308,16 +267,50 @@ class DiffusionUNet(nn.Module):
                         downsample     = False,
                     ).to(device)
                 )
-            # Attention block
-            self.dec_layers.append(
-                AttentionBlock(
-                    name           = 'att',
-                    n_channels     = self.n_model_channels,
-                    n_heads        = self.n_heads,
-                    n_groups       = self.n_groups,
-                ).to(device)
-            )
+            # Attention block in encoder
+            if self.use_attention:
+                self.enc_layers.append(
+                    AttentionBlock(
+                        name           = 'att',
+                        n_channels     = self.n_model_channels,
+                        n_heads        = self.n_heads,
+                        n_groups       = self.n_groups,
+                    ).to(device)
+                )
             
+        # Decoder
+        self.dec_layers = []
+        for d_idx in range(self.n_dec_blocks):
+            # Residual block in decoder
+            if self.use_resblock:
+                if d_idx == 0: n_channels = self.n_model_channels*self.n_enc_blocks
+                else: n_channels = self.n_model_channels
+                self.dec_layers.append(
+                    ResBlock(
+                        name           = 'res',
+                        n_channels     = n_channels,
+                        n_emb_channels = self.n_emb_dim,
+                        n_out_channels = self.n_model_channels,
+                        n_groups       = self.n_groups,
+                        dims           = self.dims,
+                        actv           = self.actv,
+                        kernel_size    = self.kernel_size,
+                        padding        = self.padding,
+                        upsample       = False,
+                        downsample     = False,
+                    ).to(device)
+                )
+            # Attention block in decoder
+            if self.use_attention:
+                self.dec_layers.append(
+                    AttentionBlock(
+                        name           = 'att',
+                        n_channels     = self.n_model_channels,
+                        n_heads        = self.n_heads,
+                        n_groups       = self.n_groups,
+                    ).to(device)
+                )
+
         # Define U-net
         self.enc_net = nn.Sequential()
         for l_idx,layer in enumerate(self.enc_layers):
@@ -356,25 +349,34 @@ class DiffusionUNet(nn.Module):
             h = module(h,emb)
             if isinstance(h,tuple): h = h[0] # in case of having tuple
             # Append
-            if (m_idx%2) == 1: module_name = 'res'
-            else: module_name = 'att'
+            module_name = module[0].name
             intermediate_output_dict['h_enc_%s_%02d'%(module_name,m_idx)] = h
             # Append encoder output
-            if (m_idx%2) == 1:
+            if self.use_resblock and self.use_attention:
+                if (m_idx%2) == 1:
+                    self.h_enc_list.append(h)
+            elif self.use_resblock and not self.use_attention:
+                self.h_enc_list.append(h)
+            elif not self.use_resblock and self.use_attention:
+                self.h_enc_list.append(h)
+            else:
                 self.h_enc_list.append(h)
             
         # Decoder
-        for h_idx,h_enc in enumerate(self.h_enc_list):
-            if h_idx == 0: h_enc_stack = h_enc
-            else: h_enc_stack = th.cat([h_enc_stack,h_enc],dim=1)
+        if not self.use_resblock and self.use_attention:
+            h_enc_stack = h 
+        else:
+            for h_idx,h_enc in enumerate(self.h_enc_list):
+                if h_idx == 0: h_enc_stack = h_enc
+                else: h_enc_stack = th.cat([h_enc_stack,h_enc],dim=1)
+            
         intermediate_output_dict['h_enc_stack'] = h_enc_stack
         h = h_enc_stack
         for m_idx,module in enumerate(self.dec_net):
             h = module(h,emb)
             if isinstance(h,tuple): h = h[0] # in case of having tuple
             # Append
-            if (m_idx%2) == 1: module_name = 'res'
-            else: module_name = 'att'
+            module_name = module[0].name
             intermediate_output_dict['h_dec_%s_%02d'%(module_name,m_idx)] = h
                 
         # Projection
@@ -574,13 +576,14 @@ class MixedPrecisionTrainer:
     def state_dict_to_master_params(self, state_dict):
         return state_dict_to_master_params(self.model, state_dict, self.use_fp16)
 
-def eval_ddpm_1d(model,dc,n_sample,times,x_0,device,ylim=None):
+def eval_ddpm_1d(model,dc,n_sample,x_0,step_list_to_append,device):
     """
         Evaluate DDPM in 1D case
     :param model: score function
     :param dc: dictionary of diffusion coefficients
     :param n_sample: integer of how many trajectories to sample
     :param x_0: [N x C x L] tensor
+    :param step_list_to_append: an ndarry of diffusion steps to append x_t
     """
     model.eval()
     n_data,C,L = x_0.shape
@@ -588,7 +591,7 @@ def eval_ddpm_1d(model,dc,n_sample,times,x_0,device,ylim=None):
     step_dummy = th.zeros(n_sample).type(th.long).to(device)
     _,x_T      = forward_sample(x_dummy,step_dummy,dc) # [n_sample x C x L]
     x_t        = x_T.clone() # [n_sample x C x L]
-    x_t_list   = ['']*dc['T']
+    x_t_list   = ['']*dc['T'] # empty list 
     for t in range(0,dc['T'])[::-1]: # 999 to 0
         # Score function
         step = th.full(
@@ -596,7 +599,8 @@ def eval_ddpm_1d(model,dc,n_sample,times,x_0,device,ylim=None):
             fill_value = t,
             device     = device,
             dtype      = th.long) # [n_sample]
-        eps_t,_ = model(x_t,step) # [n_sample x C x L]
+        with th.no_grad():
+            eps_t,_ = model(x_t,step) # [n_sample x C x L]
         betas_t = th.gather(
             input = th.from_numpy(dc['betas']).to(device), # [T]
             dim   = -1,
@@ -629,23 +633,9 @@ def eval_ddpm_1d(model,dc,n_sample,times,x_0,device,ylim=None):
             _,noise_t = forward_sample(x_dummy,step_dummy,dc) # [n_sample x C x 1]
             x_t = mean_t + th.sqrt(posterior_variance_t)*noise_t
         # Append
-        x_t_list[t] = x_t
+        if t in step_list_to_append:
+            x_t_list[t] = x_t
     model.train()
+    return x_t_list # list of [n_sample x C x L]
     
-    # Plot
-    for t in np.linspace(dc['T']-1,0,3).astype(np.int32):
-        x_t = x_t_list[t] # [n_sample x C x L]
-        x_t_np = x_t.detach().cpu().numpy() # [n_sample x C x L]
-        x_0_np = x_0.detach().cpu().numpy() # [n_data x C x L]
-        plt.figure(figsize=(6,2))
-        for i_idx in range(n_data): # GT
-            plt.plot(times.flatten(),x_0_np[i_idx,0,:],ls='-',color='b',lw=1)
-        for i_idx in range(n_sample): # sampled
-            plt.plot(times.flatten(),x_t_np[i_idx,0,:],ls='-',color='k',lw=1/2)
-        plt.xlim([0.0,1.0])
-        if ylim:
-            plt.ylim(ylim)
-        plt.xlabel('Time',fontsize=8)
-        plt.title('Step:[%d]'%(t),fontsize=8)
-        plt.show()
         

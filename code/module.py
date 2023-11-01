@@ -212,7 +212,7 @@ class QKVAttentionLegacy(nn.Module):
         a = th.einsum("bts,bcs->bct", weight, v) # [(H*B) x (C//H) x T]
         out = a.reshape(n_batches, -1, n_tokens) # [B x C x T]
         return out
-    
+
 class AttentionBlock(nn.Module):
     """
     An attention block that allows spatial positions to attend to each other.
