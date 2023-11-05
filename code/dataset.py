@@ -29,7 +29,8 @@ def get_1d_training_data(
     """ 
         1-D training data
     """
-    np.random.seed(seed=seed)
+    if seed is not None:
+        np.random.seed(seed=seed)
     times = np.linspace(start=0.0,stop=1.0,num=L).reshape((-1,1)) # [L x 1]
     if traj_type == 'gp':
         traj = th.from_numpy(
@@ -55,6 +56,36 @@ def get_1d_training_data(
                 y_min       = y_min,
                 y_max       = y_max
             ).reshape(-1)
+        traj = th.from_numpy(
+            traj_np
+        ).to(th.float32).to(device) # [n_traj x L]
+    elif traj_type == 'step2':
+        traj_np = np.zeros((n_traj,L))
+        for i_idx in range(n_traj): # for each trajectory
+            # First, sample value and duration
+            rate = 5
+            val = np.random.uniform(low=-3.0,high=3.0)
+            dur_tick = int(L*np.random.exponential(scale=1/rate))
+            dim_dur  = 0.1 # minimum duration in sec
+            dur_tick = max(dur_tick,int(dim_dur*L))
+            
+            tick_fr = 0
+            tick_to = tick_fr+dur_tick
+            while True:
+                # Append
+                traj_np[i_idx,tick_fr:min(L,tick_to)] = val
+                
+                # Termination condition
+                if tick_to >= L: break 
+                
+                # sample value and duration
+                val = np.random.uniform(low=-3.0,high=3.0)
+                dur_tick = int(L*np.random.exponential(scale=1/rate))
+                dur_tick = max(dur_tick,int(dim_dur*L))
+                
+                # Update tick
+                tick_fr = tick_to
+                tick_to = tick_fr+dur_tick
         traj = th.from_numpy(
             traj_np
         ).to(th.float32).to(device) # [n_traj x L]

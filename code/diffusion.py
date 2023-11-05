@@ -175,7 +175,8 @@ def forward_sample(x0_batch,t_batch,dc):
         input = th.from_numpy(dc['sqrt_one_minus_alphas_bar']).to(device), # [T]
         dim   = -1,
         index = t_batch
-    ).reshape(out_shape) # [B x 1 x 1 x 1]
+    ).reshape(out_shape) # [B x 1 x 1 x 1] if (rank==4) and [B x 1 x 1] if (rank==3)
+    
     # Forward sample
     noise = th.randn_like(input=x0_batch) # [B x C x ...]
     xt_batch = sqrt_alphas_bar_t*x0_batch + \
@@ -188,44 +189,46 @@ class DiffusionUNet(nn.Module):
     """
     def __init__(
         self,
-        name             = 'unet',
-        dims             = 1, # spatial dimension, if dims==1, [B x C x L], if dims==2, [B x C x W x H]
-        n_in_channels    = 128, # input channels
-        n_model_channels = 64, # base channel size
-        n_emb_dim        = 128, # time embedding size
-        n_enc_blocks     = 2, # number of encoder blocks
-        n_dec_blocks     = 2, # number of decoder blocks
-        n_groups         = 16, # group norm paramter
-        n_heads          = 4, # number of heads
-        actv             = nn.SiLU(),
-        kernel_size      = 3, # kernel size
-        padding          = 1,
-        use_resblock     = True,
-        use_attention    = True,
-        skip_connection  = False,
-        device           = 'cpu',
+        name                 = 'unet',
+        dims                 = 1, # spatial dimension, if dims==1, [B x C x L], if dims==2, [B x C x W x H]
+        n_in_channels        = 128, # input channels
+        n_model_channels     = 64, # base channel size
+        n_emb_dim            = 128, # time embedding size
+        n_enc_blocks         = 2, # number of encoder blocks
+        n_dec_blocks         = 2, # number of decoder blocks
+        n_groups             = 16, # group norm paramter
+        n_heads              = 4, # number of heads
+        actv                 = nn.SiLU(),
+        kernel_size          = 3, # kernel size
+        padding              = 1,
+        use_resblock         = True,
+        use_attention        = True,
+        skip_connection      = False,
+        use_scale_shift_norm = True, # positional embedding handling
+        device               = 'cpu',
     ):
         super().__init__()
-        self.name             = name
-        self.dims             = dims
-        self.n_in_channels    = n_in_channels
-        self.n_model_channels = n_model_channels
-        self.n_emb_dim        = n_emb_dim
-        self.n_enc_blocks     = n_enc_blocks
-        self.n_dec_blocks     = n_dec_blocks
-        self.n_groups         = n_groups
-        self.n_heads          = n_heads
-        self.actv             = actv
-        self.kernel_size      = kernel_size
-        self.padding          = padding
-        self.use_resblock     = use_resblock
-        self.use_attention    = use_attention
-        self.skip_connection  = skip_connection
-        self.device           = device
+        self.name                 = name
+        self.dims                 = dims
+        self.n_in_channels        = n_in_channels
+        self.n_model_channels     = n_model_channels
+        self.n_emb_dim            = n_emb_dim
+        self.n_enc_blocks         = n_enc_blocks
+        self.n_dec_blocks         = n_dec_blocks
+        self.n_groups             = n_groups
+        self.n_heads              = n_heads
+        self.actv                 = actv
+        self.kernel_size          = kernel_size
+        self.padding              = padding
+        self.use_resblock         = use_resblock
+        self.use_attention        = use_attention
+        self.skip_connection      = skip_connection
+        self.use_scale_shift_norm = use_scale_shift_norm
+        self.device               = device
         
         # Time embedding
         self.time_embed = nn.Sequential(
-            nn.Linear(in_features=self.n_emb_dim,out_features=self.n_emb_dim),
+            nn.Linear(in_features=self.n_model_channels,out_features=self.n_emb_dim),
             nn.SiLU(),
             nn.Linear(in_features=self.n_emb_dim,out_features=self.n_emb_dim),
         ).to(self.device)
@@ -254,17 +257,18 @@ class DiffusionUNet(nn.Module):
             if self.use_resblock:
                 self.enc_layers.append(
                     ResBlock(
-                        name           = 'res',
-                        n_channels     = self.n_model_channels,
-                        n_emb_channels = self.n_emb_dim,
-                        n_out_channels = self.n_model_channels,
-                        n_groups       = self.n_groups,
-                        dims           = self.dims,
-                        actv           = self.actv,
-                        kernel_size    = self.kernel_size,
-                        padding        = self.padding,
-                        upsample       = False,
-                        downsample     = False,
+                        name                 = 'res',
+                        n_channels           = self.n_model_channels,
+                        n_emb_channels       = self.n_emb_dim,
+                        n_out_channels       = self.n_model_channels,
+                        n_groups             = self.n_groups,
+                        dims                 = self.dims,
+                        actv                 = self.actv,
+                        kernel_size          = self.kernel_size,
+                        padding              = self.padding,
+                        upsample             = False,
+                        downsample           = False,
+                        use_scale_shift_norm = self.use_scale_shift_norm,
                     ).to(device)
                 )
             # Attention block in encoder
@@ -287,17 +291,18 @@ class DiffusionUNet(nn.Module):
                 else: n_channels = self.n_model_channels
                 self.dec_layers.append(
                     ResBlock(
-                        name           = 'res',
-                        n_channels     = n_channels,
-                        n_emb_channels = self.n_emb_dim,
-                        n_out_channels = self.n_model_channels,
-                        n_groups       = self.n_groups,
-                        dims           = self.dims,
-                        actv           = self.actv,
-                        kernel_size    = self.kernel_size,
-                        padding        = self.padding,
-                        upsample       = False,
-                        downsample     = False,
+                        name                 = 'res',
+                        n_channels           = n_channels,
+                        n_emb_channels       = self.n_emb_dim,
+                        n_out_channels       = self.n_model_channels,
+                        n_groups             = self.n_groups,
+                        dims                 = self.dims,
+                        actv                 = self.actv,
+                        kernel_size          = self.kernel_size,
+                        padding              = self.padding,
+                        upsample             = False,
+                        downsample           = False,
+                        use_scale_shift_norm = self.use_scale_shift_norm,
                     ).to(device)
                 )
             # Attention block in decoder
@@ -332,11 +337,11 @@ class DiffusionUNet(nn.Module):
         :return: [B x n_in_channels x ...], same shape as x
         """
         intermediate_output_dict = {}
-        intermediate_output_dict['x'] = x 
+        intermediate_output_dict['x'] = x
         
         # time embedding
         emb = self.time_embed(
-            timestep_embedding(timesteps,self.n_emb_dim)
+            timestep_embedding(timesteps,self.n_model_channels)
         ) # [B x n_emb_dim]
         
         # Lift input
@@ -362,18 +367,19 @@ class DiffusionUNet(nn.Module):
             else:
                 self.h_enc_list.append(h)
             
-        # Decoder
+        # Stack encoder outputs
         if not self.use_resblock and self.use_attention:
             h_enc_stack = h 
         else:
             for h_idx,h_enc in enumerate(self.h_enc_list):
                 if h_idx == 0: h_enc_stack = h_enc
                 else: h_enc_stack = th.cat([h_enc_stack,h_enc],dim=1)
-            
         intermediate_output_dict['h_enc_stack'] = h_enc_stack
-        h = h_enc_stack
+        
+        # Decoder
+        h = h_enc_stack # [B x n_enc_blocks*n_model_channels x ...]
         for m_idx,module in enumerate(self.dec_net):
-            h = module(h,emb)
+            h = module(h,emb)  # [B x n_model_channels x ...]
             if isinstance(h,tuple): h = h[0] # in case of having tuple
             # Append
             module_name = module[0].name
@@ -381,12 +387,12 @@ class DiffusionUNet(nn.Module):
                 
         # Projection
         if self.skip_connection:
-            out = self.proj(h) + x
+            out = self.proj(h) + x # [B x n_in_channels x ...]
         else:
-            out = self.proj(h)
+            out = self.proj(h) # [B x n_in_channels x ...]
             
         # Append
-        intermediate_output_dict['out'] = out
+        intermediate_output_dict['out'] = out # [B x n_in_channels x ...]
         
         return out,intermediate_output_dict
 

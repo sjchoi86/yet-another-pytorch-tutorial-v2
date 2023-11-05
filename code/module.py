@@ -454,8 +454,8 @@ class ResBlock(TimestepBlock):
             
         # Combine input with embedding
         if self.use_scale_shift_norm:
-            out_norm = self.out_layers[0]
-            out_actv_dr_conv = self.out_layers[1:]
+            out_norm = self.out_layers[0] # layernorm
+            out_actv_dr_conv = self.out_layers[1:] # activation -> dropout -> conv
             # emb_out: [B x 2C x ...]
             scale,shift = th.chunk(emb_out, 2, dim=1) # [B x C x ...]
             h = out_norm(h) * (1.0 + scale) + shift # [B x C x ...]
@@ -463,7 +463,7 @@ class ResBlock(TimestepBlock):
         else:
             # emb_out: [B x C x ...]
             h = h + emb_out
-            h = self.out_layers(h)
+            h = self.out_layers(h) # layernorm -> activation -> dropout -> conv
             
         # Skip connection
         out = h + self.skip_connection(x) # [B x C x ...]
