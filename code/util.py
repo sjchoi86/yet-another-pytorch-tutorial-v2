@@ -68,7 +68,7 @@ def plot_1xN_torch_traj_tensor(
     plt.figure(figsize=(n_trajs*2,3))
     for traj_idx in range(n_trajs):
         plt.subplot(1,n_trajs,traj_idx+1)
-        plt.plot(times,x_torch[traj_idx,0,:].cpu().numpy())
+        plt.plot(times,x_torch[traj_idx,0,:].cpu().numpy(),'-',color='k')
         if title_str_list:
             plt.title(title_str_list[traj_idx],fontsize=title_fontsize)
         if ylim:
@@ -288,4 +288,17 @@ def plot_ddpm_1d_result(times,x_data,step_list,x_t_list,
     plt.xlabel('Time',fontsize=8)
     plt.title('Groundtruth and Generated trajectories',fontsize=10)
     plt.tight_layout(); plt.show()
-print ("Ready.")
+
+def get_hbm_M(times,hyp_gain=1.0,hyp_len=0.1,device='cpu'):
+    """ 
+    Get a matrix M for Hilbert Brownian motion
+    :param times: [L x 1] ndarray
+    :return: [L x L] torch tensor
+    """
+    L = times.shape[0]
+    K = kernel_se(times,times,hyp={'gain':hyp_gain,'len':hyp_len}) # [L x L]
+    K = K + 1e-8*np.eye(L,L)
+    U,V = np.linalg.eigh(K,UPLO='L')
+    M = V @ np.diag(np.sqrt(U))
+    M = th.from_numpy(M).to(th.float32).to(device) # [L x L]
+    return M

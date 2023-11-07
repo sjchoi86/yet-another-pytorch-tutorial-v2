@@ -156,11 +156,13 @@ def timestep_embedding(timesteps, dim, max_period=10000):
         embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
 
-def forward_sample(x0_batch,t_batch,dc):
+def forward_sample(x0_batch,t_batch,dc,M=None):
     """
     Forward diffusion sampling
     :param x0_batch: [B x C x ...]
     :param t_batch: [B]
+    :param dc: dictionary of diffusion constants
+    :param M: a matrix of [L x L] for [B x C x L] data
     :return: xt_batch of [B x C x ...] and noise of [B x C x ...]
     """
     # Gather diffusion constants with matching dimension
@@ -179,6 +181,16 @@ def forward_sample(x0_batch,t_batch,dc):
     
     # Forward sample
     noise = th.randn_like(input=x0_batch) # [B x C x ...]
+    # (optional) correlated noise
+    if M is not None:
+        B = x0_batch.shape[0]
+        C = x0_batch.shape[1]
+        L = x0_batch.shape[2]
+        M_exp = M[None,None,:,:].expand(B,C,L,L) # [L x L] => [B x C x L x L]
+        noise_exp = noise[:,:,:,None] # [B x C x L x 1]
+        noise_exp = M_exp @ noise_exp # [B x C x L x 1]
+        noise = noise_exp.squeeze(dim=3) # [B x C x L]
+    # Jump diffusion
     xt_batch = sqrt_alphas_bar_t*x0_batch + \
         sqrt_one_minus_alphas_bar*noise # [B x C x ...]
     return xt_batch,noise
@@ -582,7 +594,8 @@ class MixedPrecisionTrainer:
     def state_dict_to_master_params(self, state_dict):
         return state_dict_to_master_params(self.model, state_dict, self.use_fp16)
 
-def eval_ddpm_1d(model,dc,n_sample,x_0,step_list_to_append,device):
+def eval_ddpm_1d(model,dc,n_sample,x_0,step_list_to_append,device,
+                 M=None,noise_scale=1.0):
     """
         Evaluate DDPM in 1D case
     :param model: score function
@@ -595,7 +608,7 @@ def eval_ddpm_1d(model,dc,n_sample,x_0,step_list_to_append,device):
     n_data,C,L = x_0.shape
     x_dummy    = th.zeros(n_sample,C,L,device=device)
     step_dummy = th.zeros(n_sample).type(th.long).to(device)
-    _,x_T      = forward_sample(x_dummy,step_dummy,dc) # [n_sample x C x L]
+    _,x_T      = forward_sample(x_dummy,step_dummy,dc,M) # [n_sample x C x L]
     x_t        = x_T.clone() # [n_sample x C x L]
     x_t_list   = ['']*dc['T'] # empty list 
     for t in range(0,dc['T'])[::-1]: # 999 to 0
@@ -636,8 +649,8 @@ def eval_ddpm_1d(model,dc,n_sample,x_0,step_list_to_append,device):
         if t == 0: # last sampling, use mean
             x_t = mean_t
         else:
-            _,noise_t = forward_sample(x_dummy,step_dummy,dc) # [n_sample x C x 1]
-            x_t = mean_t + th.sqrt(posterior_variance_t)*noise_t
+            _,noise_t = forward_sample(x_dummy,step_dummy,dc,M) # [n_sample x C x 1]
+            x_t = mean_t + noise_scale*th.sqrt(posterior_variance_t)*noise_t
         # Append
         if t in step_list_to_append:
             x_t_list[t] = x_t
