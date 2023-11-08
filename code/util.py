@@ -58,6 +58,7 @@ def plot_1xN_torch_traj_tensor(
     title_str_list = None,
     title_fontsize = 20,
     ylim           = None,
+    figsize        = None,
     ):
     """ 
     : param x_torch: [B x C x ...]
@@ -65,7 +66,8 @@ def plot_1xN_torch_traj_tensor(
     xt_np = x_torch.cpu().numpy() # [B x C x W x H]
     n_trajs = xt_np.shape[0]
     L = times.shape[0]
-    plt.figure(figsize=(n_trajs*2,3))
+    if figsize is None: figsize = (n_trajs*2,3)
+    plt.figure(figsize=figsize)
     for traj_idx in range(n_trajs):
         plt.subplot(1,n_trajs,traj_idx+1)
         plt.plot(times,x_torch[traj_idx,0,:].cpu().numpy(),'-',color='k')
@@ -238,14 +240,15 @@ def periodic_step(times,period,time_offset=0.0,y_min=0.0,y_max=1.0):
     y+=y_min
     return y
 
-def plot_ddpm_1d_result(times,x_data,step_list,x_t_list,
-                        plot_ancestral_sampling=True,
-                        plot_one_sample=False,
-                        lw_gt=1,lw_sample=1/2,
-                        ls_gt='-',ls_sample='-',
-                        lc_gt='b',lc_sample='k',
-                        ylim=(-4,+4)
-                        ):
+def plot_ddpm_1d_result(
+    times,x_data,step_list,x_t_list,
+    plot_ancestral_sampling=True,
+    plot_one_sample=False,
+    lw_gt=1,lw_sample=1/2,
+    ls_gt='-',ls_sample='-',
+    lc_gt='b',lc_sample='k',
+    ylim=(-4,+4),figsize=(6,3),title_str=None
+    ):
     """
     :param times: [L x 1] ndarray
     :param x_0: [N x C x L] torch tensor, training data
@@ -273,7 +276,7 @@ def plot_ddpm_1d_result(times,x_data,step_list,x_t_list,
         plt.tight_layout(); plt.show()
     
     # Plot generated data
-    plt.figure(figsize=(6,3))
+    plt.figure(figsize=figsize)
     x_0_np = x_t_list[0].detach().cpu().numpy() # [n_sample x C x L]
     for i_idx in range(n_data): # GT
         plt.plot(times.flatten(),x_data_np[i_idx,0,:],ls=ls_gt,color=lc_gt,lw=lw_gt)
@@ -286,7 +289,10 @@ def plot_ddpm_1d_result(times,x_data,step_list,x_t_list,
             plt.plot(times.flatten(),x_0_np[i_idx,0,:],ls=ls_sample,color=lc_sample,lw=lw_sample)
     plt.xlim([0.0,1.0]); plt.ylim(ylim)
     plt.xlabel('Time',fontsize=8)
-    plt.title('Groundtruth and Generated trajectories',fontsize=10)
+    if title_str is None:
+        plt.title('Groundtruth and Generated trajectories',fontsize=10)
+    else:
+        plt.title(title_str,fontsize=10)
     plt.tight_layout(); plt.show()
 
 def get_hbm_M(times,hyp_gain=1.0,hyp_len=0.1,device='cpu'):
@@ -302,3 +308,26 @@ def get_hbm_M(times,hyp_gain=1.0,hyp_len=0.1,device='cpu'):
     M = V @ np.diag(np.sqrt(U))
     M = th.from_numpy(M).to(th.float32).to(device) # [L x L]
     return M
+
+def get_resampling_steps(t_T, j, r):
+    """
+    Get resampling steps for repaint, inpainting method using diffusion models
+    :param t_T: maximum time steps for inpainting
+    :param j: jump length
+    :param r: the number of resampling
+    """
+    jumps = np.zeros(t_T+1)
+    for i in range(1, t_T-j, j):
+        jumps[i] = r-1
+    t = t_T+1
+    ts = []
+    while t > 1:
+        t -= 1
+        ts.append(t)
+        if jumps[t] > 0:
+            jumps[t] -= 1
+            for _ in range(j):
+                t += 1
+                ts.append(t)
+    ts.append(0)
+    return ts

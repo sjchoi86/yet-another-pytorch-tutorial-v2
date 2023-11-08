@@ -1,4 +1,4 @@
-import math
+import math,random
 import numpy as np
 import matplotlib.pyplot as plt
 import torch as th
@@ -181,12 +181,17 @@ def forward_sample(x0_batch,t_batch,dc,M=None):
     
     # Forward sample
     noise = th.randn_like(input=x0_batch) # [B x C x ...]
+    
     # (optional) correlated noise
     if M is not None:
         B = x0_batch.shape[0]
         C = x0_batch.shape[1]
         L = x0_batch.shape[2]
-        M_exp = M[None,None,:,:].expand(B,C,L,L) # [L x L] => [B x C x L x L]
+        if isinstance(M, list): # if M is a list,
+            M_use = random.choice(M)
+        else:
+            M_use = M # [L x L]
+        M_exp = M_use[None,None,:,:].expand(B,C,L,L) # [L x L] => [B x C x L x L]
         noise_exp = noise[:,:,:,None] # [B x C x L x 1]
         noise_exp = M_exp @ noise_exp # [B x C x L x 1]
         noise = noise_exp.squeeze(dim=3) # [B x C x L]
