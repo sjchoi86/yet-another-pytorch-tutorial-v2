@@ -89,6 +89,19 @@ def get_1d_training_data(
         traj = th.from_numpy(
             traj_np
         ).to(th.float32).to(device) # [n_traj x L]
+    elif traj_type == 'triangle':
+        traj_np = np.zeros((n_traj,L))
+        for i_idx in range(n_traj):
+            period      = 0.2
+            time_offset = np.random.uniform(low=-0.02,high=0.02)
+            y_min       = np.random.uniform(low=-3.2,high=-2.8)
+            y_max       = np.random.uniform(low=2.8,high=3.2)
+            times_mod = np.mod(times+time_offset,period)/period
+            y = (y_max - y_min) * times_mod + y_min
+            traj_np[i_idx,:] = y.reshape(-1)
+        traj = th.from_numpy(
+            traj_np
+        ).to(th.float32).to(device) # [n_traj x L]
     else:
         print ("Unknown traj_type:[%s]"%(traj_type))
     # Plot

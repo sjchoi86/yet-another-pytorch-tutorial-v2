@@ -309,7 +309,7 @@ def get_hbm_M(times,hyp_gain=1.0,hyp_len=0.1,device='cpu'):
     M = th.from_numpy(M).to(th.float32).to(device) # [L x L]
     return M
 
-def get_resampling_steps(t_T, j, r):
+def get_resampling_steps(t_T, j, r,plot_steps=False,figsize=(15,4)):
     """
     Get resampling steps for repaint, inpainting method using diffusion models
     :param t_T: maximum time steps for inpainting
@@ -320,14 +320,24 @@ def get_resampling_steps(t_T, j, r):
     for i in range(1, t_T-j, j):
         jumps[i] = r-1
     t = t_T+1
-    ts = []
+    resampling_steps = []
     while t > 1:
         t -= 1
-        ts.append(t)
+        resampling_steps.append(t)
         if jumps[t] > 0:
             jumps[t] -= 1
             for _ in range(j):
                 t += 1
-                ts.append(t)
-    ts.append(0)
-    return ts
+                resampling_steps.append(t)
+    resampling_steps.append(0)
+    
+    # (optional) plot
+    if plot_steps:
+        plt.figure(figsize=figsize)
+        plt.plot(resampling_steps,'-',color='k',lw=1)
+        plt.xlabel('Number of Transitions')
+        plt.ylabel('Diffusion time step')
+        plt.show()
+        
+    # Return
+    return resampling_steps
