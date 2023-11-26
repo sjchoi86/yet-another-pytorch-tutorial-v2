@@ -360,7 +360,8 @@ class DiffusionUNet(nn.Module):
     def forward(self,x,timesteps,c=None):
         """ 
         :param x: [B x n_in_channels x ...]
-        :timesteps: [B]
+        :param timesteps: [B]
+        :param c: [B]
         :return: [B x n_in_channels x ...], same shape as x
         """
         intermediate_output_dict = {}
@@ -437,27 +438,28 @@ class DiffusionUNetLegacy(nn.Module):
         name                 = 'unet',
         dims                 = 1, # spatial dimension, if dims==1, [B x C x L], if dims==2, [B x C x W x H]
         n_in_channels        = 128, # input channels
-        n_model_channels     = 64, # base channel size
+        n_base_channels      = 64, # base channel size
         n_emb_dim            = 128, # time embedding size
         n_cond_dim           = 0, # conditioning vector size (default is 0 indicating an unconditional model)
-        n_enc_blocks         = 4, # number of encoder blocks
-        n_dec_blocks         = 4, # number of decoder blocks
+        n_enc_blocks         = 3, # number of encoder blocks
+        n_dec_blocks         = 3, # number of decoder blocks
         n_groups             = 16, # group norm paramter
         n_heads              = 4, # number of heads
         actv                 = nn.SiLU(),
         kernel_size          = 3, # kernel size
         padding              = 1,
-        skip_connection      = True,
+        use_attention        = True,
+        skip_connection      = True, # (optional) additional final skip connection
         use_scale_shift_norm = True, # positional embedding handling
-        chnnel_mult          = (1,2,3,4),
-        resblock_updown      = True,
+        chnnel_multiples     = (1,2,4),
+        updown_rates         = (2,2,2),
         device               = 'cpu',
     ):
         super().__init__()
         self.name                 = name
         self.dims                 = dims
         self.n_in_channels        = n_in_channels
-        self.n_model_channels     = n_model_channels
+        self.n_base_channels      = n_base_channels
         self.n_emb_dim            = n_emb_dim
         self.n_cond_dim           = n_cond_dim
         self.n_enc_blocks         = n_enc_blocks
@@ -467,14 +469,16 @@ class DiffusionUNetLegacy(nn.Module):
         self.actv                 = actv
         self.kernel_size          = kernel_size
         self.padding              = padding
+        self.use_attention        = use_attention
         self.skip_connection      = skip_connection
         self.use_scale_shift_norm = use_scale_shift_norm
-        self.resblock_updown      = resblock_updown
+        self.chnnel_multiples     = chnnel_multiples
+        self.updown_rates         = updown_rates
         self.device               = device
         
         # Time embedding
         self.time_embed = nn.Sequential(
-            nn.Linear(in_features=self.n_model_channels,out_features=self.n_emb_dim),
+            nn.Linear(in_features=self.n_base_channels,out_features=self.n_emb_dim),
             nn.SiLU(),
             nn.Linear(in_features=self.n_emb_dim,out_features=self.n_emb_dim),
         ).to(self.device)
@@ -487,84 +491,110 @@ class DiffusionUNetLegacy(nn.Module):
                 nn.Linear(in_features=self.n_emb_dim,out_features=self.n_emb_dim),
             ).to(self.device)
         
-        # Lifting
+        # Lifting (1x1 conv)
         self.lift = conv_nd(
             dims         = self.dims,
             in_channels  = self.n_in_channels,
-            out_channels = self.n_model_channels,
+            out_channels = self.n_base_channels,
             kernel_size  = 1,
         ).to(device)
         
-        # Projection
-        self.proj = conv_nd(
-            dims         = self.dims,
-            in_channels  = self.n_model_channels,
-            out_channels = self.n_in_channels,
-            kernel_size  = 1,
-        ).to(device)
-        
-        # Declare U-net 
         # Encoder
         self.enc_layers = []
-        for e_idx in range(self.n_enc_blocks):
+        n_channels2cat = [] # channel size to concat for decoder (note that we should use .pop() )
+        for e_idx in range(self.n_enc_blocks): # for each encoder block
+            if e_idx == 0:
+                in_channel  = self.n_base_channels
+                out_channel = self.n_base_channels*self.chnnel_multiples[e_idx]
+            else:
+                in_channel  = self.n_base_channels*self.chnnel_multiples[e_idx-1]
+                out_channel = self.n_base_channels*self.chnnel_multiples[e_idx]
+            n_channels2cat.append(out_channel) # append out_channel
+            updown_rate = updown_rates[e_idx]
+            
             # Residual block in encoder
             self.enc_layers.append(
                 ResBlock(
                     name                 = 'res',
-                    n_channels           = self.n_model_channels,
+                    n_channels           = in_channel,
                     n_emb_channels       = self.n_emb_dim,
-                    n_out_channels       = self.n_model_channels,
+                    n_out_channels       = out_channel,
                     n_groups             = self.n_groups,
                     dims                 = self.dims,
                     actv                 = self.actv,
                     kernel_size          = self.kernel_size,
                     padding              = self.padding,
-                    upsample             = False,
-                    downsample           = False,
+                    downsample           = updown_rate != 1,
+                    down_rate            = updown_rate,
                     use_scale_shift_norm = self.use_scale_shift_norm,
                 ).to(device)
             )
             # Attention block in encoder
-            self.enc_layers.append(
-                AttentionBlock(
-                    name           = 'att',
-                    n_channels     = self.n_model_channels,
-                    n_heads        = self.n_heads,
-                    n_groups       = self.n_groups,
-                ).to(device)
-            )
+            if self.use_attention:
+                self.enc_layers.append(
+                    AttentionBlock(
+                        name           = 'att',
+                        n_channels     = out_channel,
+                        n_heads        = self.n_heads,
+                        n_groups       = self.n_groups,
+                    ).to(device)
+                )
+            
+        # Mid
+        self.mid = conv_nd(
+            dims         = self.dims,
+            in_channels  = self.n_base_channels*self.chnnel_multiples[-1],
+            out_channels = self.n_base_channels*self.chnnel_multiples[-1],
+            kernel_size  = 1,
+        ).to(device)
             
         # Decoder
         self.dec_layers = []
         for d_idx in range(self.n_dec_blocks):
             # Residual block in decoder
-            if d_idx == 0: n_channels = self.n_model_channels*self.n_enc_blocks
-            else: n_channels = self.n_model_channels
+            if d_idx == 0: # first decoder
+                in_channel = self.chnnel_multiples[::-1][d_idx]*self.n_base_channels + n_channels2cat.pop()
+                out_channel = self.chnnel_multiples[::-1][d_idx]*self.n_base_channels
+            else: 
+                in_channel = self.chnnel_multiples[::-1][d_idx-1]*self.n_base_channels + n_channels2cat.pop()
+                out_channel = self.chnnel_multiples[::-1][d_idx]*self.n_base_channels
+                
+            updown_rate = updown_rates[::-1][d_idx]
+                
             self.dec_layers.append(
                 ResBlock(
                     name                 = 'res',
-                    n_channels           = n_channels,
+                    n_channels           = in_channel,
                     n_emb_channels       = self.n_emb_dim,
-                    n_out_channels       = self.n_model_channels,
+                    n_out_channels       = out_channel,
                     n_groups             = self.n_groups,
                     dims                 = self.dims,
                     actv                 = self.actv,
                     kernel_size          = self.kernel_size,
                     padding              = self.padding,
-                    upsample             = False,
-                    downsample           = False,
+                    upsample             = updown_rate != 1,
+                    up_rate              = updown_rate,
                     use_scale_shift_norm = self.use_scale_shift_norm,
                 ).to(device)
             )
             # Attention block in decoder
-            self.dec_layers.append(
-                AttentionBlock(
-                    name           = 'att',
-                    n_channels     = self.n_model_channels,
-                    n_heads        = self.n_heads,
-                    n_groups       = self.n_groups,
-                ).to(device)
-            )
+            if self.use_attention:
+                self.dec_layers.append(
+                    AttentionBlock(
+                        name           = 'att',
+                        n_channels     = out_channel,
+                        n_heads        = self.n_heads,
+                        n_groups       = self.n_groups,
+                    ).to(device)
+                )
+            
+        # Projection
+        self.proj = conv_nd(
+            dims         = self.dims,
+            in_channels  = (1+self.chnnel_multiples[0])*self.n_base_channels,
+            out_channels = self.n_in_channels,
+            kernel_size  = 1,
+        ).to(device)
 
         # Define U-net
         self.enc_net = nn.Sequential()
@@ -591,7 +621,7 @@ class DiffusionUNetLegacy(nn.Module):
         
         # time embedding
         emb = self.time_embed(
-            timestep_embedding(timesteps,self.n_model_channels)
+            timestep_embedding(timesteps,self.n_base_channels)
         ) # [B x n_emb_dim]
         
         # conditional embedding
@@ -600,11 +630,12 @@ class DiffusionUNetLegacy(nn.Module):
             emb = emb + cond
         
         # Lift input
-        h = self.lift(x) # [B x n_model_channels x ...]
+        h = self.lift(x) # [B x n_base_channels x ...]
+        if isinstance(h,tuple): h = h[0] # in case of having tuple
         intermediate_output_dict['x_lifted'] = h
         
         # Encoder
-        self.h_enc_list = []
+        self.h_enc_list = [h] # start with lifted input
         for m_idx,module in enumerate(self.enc_net):
             h = module(h,emb)
             if isinstance(h,tuple): h = h[0] # in case of having tuple
@@ -612,25 +643,32 @@ class DiffusionUNetLegacy(nn.Module):
             module_name = module[0].name
             intermediate_output_dict['h_enc_%s_%02d'%(module_name,m_idx)] = h
             # Append encoder output
-            if (m_idx%2) == 1:
+            if self.use_attention:
+                if (m_idx%2) == 1:
+                    self.h_enc_list.append(h)
+            else:
                 self.h_enc_list.append(h)
             
-        # Stack encoder outputs
-        for h_idx,h_enc in enumerate(self.h_enc_list):
-            if h_idx == 0: h_enc_stack = h_enc
-            else: h_enc_stack = th.cat([h_enc_stack,h_enc],dim=1)
-        intermediate_output_dict['h_enc_stack'] = h_enc_stack
+        # Mid
+        h = self.mid(h)
+        if isinstance(h,tuple): h = h[0] # in case of having tuple
         
         # Decoder
-        h = h_enc_stack # [B x n_enc_blocks*n_model_channels x ...]
         for m_idx,module in enumerate(self.dec_net):
-            h = module(h,emb)  # [B x n_model_channels x ...]
-            if isinstance(h,tuple): h = h[0] # in case of having tuple
+            if self.use_attention:
+                if (m_idx%2) == 0:
+                    h = th.cat((h,self.h_enc_list.pop()),dim=1)
+            else:
+                h = th.cat((h,self.h_enc_list.pop()),dim=1)
+            h = module(h,emb)  # [B x n_base_channels x ...]
+            if isinstance(h,tuple): h = h[0] # in cfase of having tuple
             # Append
             module_name = module[0].name
             intermediate_output_dict['h_dec_%s_%02d'%(module_name,m_idx)] = h
                 
         # Projection
+        h = th.cat((h,self.h_enc_list.pop()),dim=1)
+        
         if self.skip_connection:
             out = self.proj(h) + x # [B x n_in_channels x ...]
         else:
@@ -640,6 +678,35 @@ class DiffusionUNetLegacy(nn.Module):
         intermediate_output_dict['out'] = out # [B x n_in_channels x ...]
         
         return out,intermediate_output_dict
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def get_param_groups_and_shapes(named_model_params):
     named_model_params = list(named_model_params)

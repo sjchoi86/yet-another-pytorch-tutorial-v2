@@ -433,7 +433,7 @@ class ResBlock(TimestepBlock):
     def forward(self,x,emb):
         """
         :param x: [B x C x ...]
-        :param x: [B x n_emb_channels]
+        :param emb: [B x n_emb_channels]
         :return: [B x C x ...]
         """
         # Input layer (groupnorm -> actv -> conv)
