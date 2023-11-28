@@ -973,4 +973,81 @@ def eval_ddpm_1d(
     model.train()
     return x_t_list # list of [n_sample x C x L]
     
-        
+def eval_ddpm_2d(
+    model,
+    dc,
+    n_sample,
+    x_0,
+    step_list_to_append,
+    device,
+    cond=None,
+    M=None,
+    noise_scale=1.0
+    ):
+    """
+    Evaluate DDPM in 2D case
+    :param model: score function
+    :param dc: dictionary of diffusion coefficients
+    :param n_sample: integer of how many trajectories to sample
+    :param x_0: [N x C x W x H] tensor
+    :param step_list_to_append: an ndarry of diffusion steps to append x_t
+    """
+    model.eval()
+    n_data,C,W,H = x_0.shape
+    x_dummy    = th.zeros(n_sample,C,W,H,device=device)
+    step_dummy = th.zeros(n_sample).type(th.long).to(device)
+    _,x_T      = forward_sample(x_dummy,step_dummy,dc,M) # [n_sample x C x W x H]
+    x_t        = x_T.clone() # [n_sample x C x W x H]
+    x_t_list   = ['']*dc['T'] # empty list 
+    for t in range(0,dc['T'])[::-1]: # 999 to 0
+        # Score function
+        step = th.full(
+            size       = (n_sample,),
+            fill_value = t,
+            device     = device,
+            dtype      = th.long) # [n_sample]
+        with th.no_grad():
+            if cond is None: # unconditioned model
+                eps_t,_ = model(x_t,step) # [n_sample x C x W x H]
+            else:
+                cond_weight = 0.5
+                eps_cont_d,_ = model(x_t,step,cond.repeat(n_sample,1))
+                eps_uncond_d,_ = model(x_t,step,0.0*cond.repeat(n_sample,1))
+                # Addup
+                eps_t = (1+cond_weight)*eps_cont_d - cond_weight*eps_uncond_d # [n_sample x C x W x H]
+        betas_t = th.gather(
+            input = th.from_numpy(dc['betas']).to(device), # [T]
+            dim   = -1,
+            index = step
+        ).reshape((-1,1,1,1)) # [n_sample x 1 x 1 x 1]
+        sqrt_one_minus_alphas_bar_t = th.gather(
+            input = th.from_numpy(dc['sqrt_one_minus_alphas_bar']).to(device), # [T]
+            dim   = -1,
+            index = step
+        ).reshape((-1,1,1,1)) # [n_sample x 1 x 1 x 1]
+        sqrt_recip_alphas_t = th.gather(
+            input = th.from_numpy(dc['sqrt_recip_alphas']).to(device), # [T]
+            dim   = -1,
+            index = step
+        ).reshape((-1,1,1,1)) # [n_sample x 1 x 1 x 1]
+        # Compute posterior mean
+        mean_t = sqrt_recip_alphas_t * (
+            x_t - betas_t*eps_t/sqrt_one_minus_alphas_bar_t
+            ) # [n_sample x C x W x H]
+        # Compute posterior variance
+        posterior_variance_t = th.gather(
+            input = th.from_numpy(dc['posterior_variance']).to(device), # [T]
+            dim   = -1,
+            index = step
+        ).reshape((-1,1,1,1)) # [n_sample x 1 x 1 x 1]
+        # Sample
+        if t == 0: # last sampling, use mean
+            x_t = mean_t
+        else:
+            _,noise_t = forward_sample(x_dummy,step_dummy,dc,M) # [n_sample x C x W x H]
+            x_t = mean_t + noise_scale*th.sqrt(posterior_variance_t)*noise_t
+        # Append
+        if t in step_list_to_append:
+            x_t_list[t] = x_t
+    model.train()
+    return x_t_list # list of [n_sample x C x W x H]
