@@ -10,7 +10,8 @@ Minimal implementations of
 - [Attention](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/attention.ipynb): Attention block with legacy QKV attention mechanism
 - [ResBlock](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_resblock.ipynb): Residual block for diffusion models
 - [Diffusion](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_constants.ipynb): Diffusion constants
-- [DDPM 1D Example](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_1d_example.ipynb): Denoising Diffusion Probabilistic Model (DDPM) example on 1D data
+- [DDPM 1D Example](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_1d_example.ipynb): Denoising Diffusion Probabilistic Model (DDPM) example on generating trajectories
+- [DDPM 2D Example](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_2d_example.ipynb): Denoising Diffusion Probabilistic Model (DDPM) example on generating images
 - [DDPM-CFG 1D Example](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_cond_1d_example.ipynb): Conditional Generation using Classifier-Free Guidance (CFG)
 - [Repaint 1D Example](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/repaint_1d_example.ipynb): Diffusion-based inpainting example on 1D data
 
