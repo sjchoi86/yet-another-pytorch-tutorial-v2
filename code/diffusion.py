@@ -539,7 +539,7 @@ class DiffusionUNetLegacy(nn.Module):
                         n_groups       = self.n_groups,
                     ).to(device)
                 )
-            
+        
         # Mid
         self.mid = conv_nd(
             dims         = self.dims,
@@ -901,9 +901,9 @@ def eval_ddpm_1d(
     x_0,
     step_list_to_append,
     device,
-    cond=None,
-    M=None,
-    noise_scale=1.0
+    cond        = None,
+    M           = None,
+    noise_scale = 1.0
     ):
     """
     Evaluate DDPM in 1D case

@@ -24,7 +24,11 @@ def get_1d_training_data(
     device    = 'cpu',
     seed      = 1,
     plot_data = True,
-    verbose   = True
+    figsize   = (6,2),
+    ls        = '-',
+    lc        = 'k',
+    lw        = 1,
+    verbose   = True,
     ):
     """ 
         1-D training data
@@ -41,6 +45,19 @@ def get_1d_training_data(
                 meas_std = 1e-8,
                 n_traj   = n_traj
             )
+        ).to(th.float32).to(device) # [n_traj x L]
+    elif traj_type == 'gp2':
+        traj_np = np.zeros((n_traj,L))
+        for i_idx in range(n_traj):
+            traj_np[i_idx,:] = gp_sampler(
+                times    = times,
+                hyp_gain = 2.0,
+                hyp_len  = np.random.uniform(1e-8,1.0),
+                meas_std = 1e-8,
+                n_traj   = 1
+            ).reshape(-1)
+        traj = th.from_numpy(
+            traj_np
         ).to(th.float32).to(device) # [n_traj x L]
     elif traj_type == 'step':
         traj_np = np.zeros((n_traj,L))
@@ -106,8 +123,9 @@ def get_1d_training_data(
         print ("Unknown traj_type:[%s]"%(traj_type))
     # Plot
     if plot_data:
-        plt.figure(figsize=(6,2))
-        for i_idx in range(n_traj): plt.plot(times,traj[i_idx,:].cpu().numpy(),ls='-',color='k',lw=1)
+        plt.figure(figsize=figsize)
+        for i_idx in range(n_traj): 
+            plt.plot(times,traj[i_idx,:].cpu().numpy(),ls=ls,color=lc,lw=lw)
         plt.xlim([0.0,1.0])
         plt.ylim([-4,+4])
         plt.xlabel('Time',fontsize=10)
