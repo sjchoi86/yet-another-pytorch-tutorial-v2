@@ -6,6 +6,7 @@ Minimal implementations of
 - [AlexNet](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/alexnet.ipynb): : MNIST classification using AlexNet
 - [VGG](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/vgg.ipynb): MNIST classification using VGG
 - [GoogLeNet](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/googlenet.ipynb): MNIST classification GoogLeNet
+- [MDN](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/mdn_reg.ipynb): Regression using Mixture Density Networks
 - [ResNet](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/resnet.ipynb): MNIST classification ResNet
 - [Attention](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/attention.ipynb): Attention block with legacy QKV attention mechanism
 - [ResBlock](https://github.com/sjchoi86/yet-another-pytorch-tutorial-v2/blob/main/code/diffusion_resblock.ipynb): Residual block for diffusion models
