@@ -137,3 +137,50 @@ def get_1d_training_data(
         print ("x_0:[%s]"%(get_torch_size_string(x_0)))
     # Out
     return times,x_0
+
+def get_mdn_data(
+    n_train    = 1000,
+    x_min      = 0.0,
+    x_max      = 1.0,
+    y_min      = -1.0,
+    y_max      = 1.0,
+    freq       = 1.0,
+    noise_rate = 1.0,
+    seed       = 0,
+    FLIP_AUGMENT = True,
+):
+    np.random.seed(seed=seed)
+    
+    if FLIP_AUGMENT:
+        n_half    = n_train // 2
+        x_train_a = x_min + (x_max-x_min)*np.random.rand(n_half,1) # [n_half x 1]
+        x_rate    = (x_train_a-x_min)/(x_max-x_min) # [n_half x 1]
+        sin_temp  = y_min + (y_max-y_min)*np.sin(2*np.pi*freq*x_rate)
+        cos_temp  = y_min + (y_max-y_min)*np.cos(2*np.pi*freq*x_rate)
+        y_train_a = np.concatenate(
+            (sin_temp+1*(y_max-y_min)*x_rate,
+            cos_temp+1*(y_max-y_min)*x_rate),axis=1) # [n_half x 2]
+        x_train_b = x_min + (x_max-x_min)*np.random.rand(n_half,1) # [n_half x 1]
+        x_rate    = (x_train_b-x_min)/(x_max-x_min) # [n_half x 1]
+        sin_temp  = y_min + (y_max-y_min)*np.sin(2*np.pi*freq*x_rate)
+        cos_temp  = y_min + (y_max-y_min)*np.cos(2*np.pi*freq*x_rate)
+        y_train_b = -np.concatenate(
+            (sin_temp+1*(y_max-y_min)*x_rate,
+            cos_temp+1*(y_max-y_min)*x_rate),axis=1) # [n_half x 2]
+        # Concatenate
+        x_train = np.concatenate((x_train_a,x_train_b),axis=0) # [n_train x 1]
+        y_train = np.concatenate((y_train_a,y_train_b),axis=0) # [n_train x 2]
+    else:
+        x_train   = x_min + (x_max-x_min)*np.random.rand(n_train,1) # [n_train x 1]
+        x_rate    = (x_train-x_min)/(x_max-x_min) # [n_train x 1]
+        sin_temp  = y_min + (y_max-y_min)*np.sin(2*np.pi*freq*x_rate)
+        cos_temp  = y_min + (y_max-y_min)*np.cos(2*np.pi*freq*x_rate)
+        y_train   = np.concatenate(
+            (sin_temp+1*(y_max-y_min)*x_rate,
+            cos_temp+1*(y_max-y_min)*x_rate),axis=1) # [n_train x 2]
+        
+    # Add noise
+    x_rate  = (x_train-x_min)/(x_max-x_min) # [n_train x 1]
+    noise   = noise_rate * (y_max-y_min) * (2*np.random.rand(n_train,2)-1) * ((x_rate)**2) # [n_train x 2]
+    y_train = y_train + noise # [n_train x 2]
+    return x_train,y_train

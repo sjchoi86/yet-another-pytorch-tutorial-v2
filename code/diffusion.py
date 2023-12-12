@@ -613,7 +613,8 @@ class DiffusionUNetLegacy(nn.Module):
     def forward(self,x,timesteps,c=None):
         """ 
         :param x: [B x n_in_channels x ...]
-        :timesteps: [B]
+        :param timesteps: [B]
+        :param c:
         :return: [B x n_in_channels x ...], same shape as x
         """
         intermediate_output_dict = {}
@@ -627,7 +628,7 @@ class DiffusionUNetLegacy(nn.Module):
         # conditional embedding
         if self.n_cond_dim > 0:
             cond = self.cond_embed(c)
-            emb = emb + cond
+            emb = emb + cond # [B x n_base_channels]
         
         # Lift input
         h = self.lift(x) # [B x n_base_channels x ...]

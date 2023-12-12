@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import torch as th
 from scipy.spatial import distance
 
+def th2np(x):
+    return x.detach().cpu().numpy()
 
 def get_torch_size_string(x):
     return "x".join(map(str,x.shape))
