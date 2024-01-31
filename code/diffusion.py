@@ -156,7 +156,7 @@ def timestep_embedding(timesteps, dim, max_period=10000):
         embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
 
-def forward_sample(x0_batch,t_batch,dc,M=None):
+def forward_sample(x0_batch,t_batch,dc,M=None,noise_scale=1.0):
     """
     Forward diffusion sampling
     :param x0_batch: [B x C x ...]
@@ -195,9 +195,10 @@ def forward_sample(x0_batch,t_batch,dc,M=None):
         noise_exp = noise[:,:,:,None] # [B x C x L x 1]
         noise_exp = M_exp @ noise_exp # [B x C x L x 1]
         noise = noise_exp.squeeze(dim=3) # [B x C x L]
+    
     # Jump diffusion
     xt_batch = sqrt_alphas_bar_t*x0_batch + \
-        sqrt_one_minus_alphas_bar*noise # [B x C x ...]
+        sqrt_one_minus_alphas_bar*noise_scale*noise # [B x C x ...]
     return xt_batch,noise
 
 class DiffusionUNet(nn.Module):
